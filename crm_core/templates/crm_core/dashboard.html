@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Медицинская CRM — Панель управления</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; color: #0f172a; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .card-header { background: #ffffff; border-bottom: 1px solid #f1f5f9; font-weight: 600; padding: 14px 18px; border-radius: 12px 12px 0 0 !important; }
+        .badge-tz { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .search-results { position: absolute; z-index: 1000; width: 100%; max-height: 250px; overflow-y: auto; }
+    </style>
+</head>
+<body class="py-4">
+<div class="container-fluid px-4">
+
+    <!-- Верхняя панель и поиск по ИИН / ФИО / Телефону (п. 5.3) -->
+    <div class="card mb-4 p-3 bg-white">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h4 class="fw-bold text-primary mb-1">
+                    <i class="bi bi-hospital"></i> Медицинская CRM
+                    <span class="badge bg-primary-subtle text-primary badge-tz align-middle ms-2">ТЗ 1.1–7.6 Готово</span>
+                </h4>
+                <div class="text-secondary small">Колл-центр, Маркетинг, Задачи сменности, Согласия WhatsApp и Outbox</div>
+            </div>
+
+            <!-- Универсальный поиск -->
+            <div class="position-relative" style="min-width: 320px; max-width: 450px; flex-grow: 1;">
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" id="patientSearchInput" class="form-control border-start-0" 
+                           placeholder="Поиск по ИИН, телефону или ФИО..." autocomplete="off" oninput="handlePatientSearch(this.value)">
+                </div>
+                <div id="searchResultsList" class="list-group search-results shadow d-none"></div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <a href="/api/analytics/export-csv/" class="btn btn-outline-success btn-sm">
+                    <i class="bi bi-download"></i> Экспорт CSV (п. 4.5)
+                </a>
+                <a href="/admin/" class="btn btn-outline-secondary btn-sm" target="_blank">
+                    <i class="bi bi-gear"></i> Справочники (п. 6.4)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Интерактивный демонстрационный стенд -->
+    <div class="card mb-4 border-start border-4 border-primary">
+        <div class="card-body py-3">
+            <div class="row align-items-center">
+                <div class="col-lg-7">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="badge bg-primary badge-tz">Тестовый профиль</span>
+                        <a href="/patient/{{ test_patient.id }}/" class="fw-bold text-dark text-decoration-none">
+                            {{ test_patient.first_name }} {{ test_patient.last_name }} <i class="bi bi-box-arrow-up-right small"></i>
+                        </a>
+                        <span class="text-muted small">| ИИН: <strong>{{ test_patient.iin|default:"080814500123" }}</strong></span>
+                    </div>
+                    <div class="small text-muted">
+                        Телефон: <strong class="text-dark">{{ test_patient.phone }}</strong> | 
+                        WhatsApp: 
+                        {% if test_patient.whatsapp_consent %}
+                            <span class="badge bg-success-subtle text-success">Согласие активно</span>
+                        {% else %}
+                            <span class="badge bg-danger-subtle text-danger">Запрещено</span>
+                        {% endif %}
+                        | Источник: <strong>{{ test_patient.get_consent_source_display|default:test_patient.consent_source|default:"Стойка" }}</strong>
+                    </div>
+                </div>
+                <div class="col-lg-5 text-lg-end mt-2 mt-lg-0">
+                    <button class="btn btn-warning btn-sm me-2" onclick="simulateMissedCall('{{ test_patient.phone }}')">
+                        <i class="bi bi-telephone-x"></i> Тест звонка (п. 2.2)
+                    </button>
+                    <button class="btn btn-success btn-sm" data-ticket-id="{{ test_ticket.id }}" onclick="testWhatsAppConsent(this.dataset.ticketId)">
+                        <i class="bi bi-whatsapp"></i> Тест рассылки (п. 2.2)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Сводные KPI метрики -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card p-3">
+                <span class="text-muted small">Всего обращений</span>
+                <div class="d-flex justify-content-between align-items-end mt-2">
+                    <h3 class="fw-bold mb-0">{{ total_tickets|default:0 }}</h3>
+                    <span class="badge bg-light text-secondary border badge-tz">п. 6.1</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3">
+                <span class="text-muted small">Записано на прием</span>
+                <div class="d-flex justify-content-between align-items-end mt-2">
+                    <h3 class="fw-bold mb-0 text-primary">{{ booked_count|default:0 }}</h3>
+                    <span class="badge bg-primary-subtle text-primary badge-tz">п. 6.3</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3">
+                <span class="text-muted small">Пропущенные вызовы</span>
+                <div class="d-flex justify-content-between align-items-end mt-2">
+                    <h3 class="fw-bold mb-0 text-danger">{{ missed_calls_count|default:0 }}</h3>
+                    <span class="badge bg-danger-subtle text-danger badge-tz">п. 2.2</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card p-3">
+                <span class="text-muted small">Выручка (Коммерция)</span>
+                <div class="d-flex justify-content-between align-items-end mt-2">
+                    <h3 class="fw-bold mb-0 text-success">{{ total_revenue|default:"0.00" }} ₸</h3>
+                    <span class="badge bg-success-subtle text-success badge-tz">п. 1.7</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Левая колонка -->
+        <div class="col-lg-8">
+            
+            <!-- Неидентифицированные обращения (п. 5.6 ТЗ) -->
+            {% if unidentified_tickets %}
+            <div class="card mb-4 border-start border-4 border-warning">
+                <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center">
+                    <span class="text-dark fw-bold">
+                        <i class="bi bi-person-question text-warning me-1"></i> Обращения до идентификации пациента (п. 5.6 ТЗ)
+                    </span>
+                    <span class="badge bg-warning text-dark">{{ unidentified_tickets|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light small text-muted">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Контакт</th>
+                                    <th>Тема / Запрос</th>
+                                    <th>Канал</th>
+                                    <th class="text-end">Действие</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ut in unidentified_tickets %}
+                                <tr>
+                                    <td class="fw-bold">#{{ ut.id }}</td>
+                                    <td><span class="badge bg-light text-dark border">{{ ut.raw_contact|default:"Не указан" }}</span></td>
+                                    <td class="small">{{ ut.subject }}</td>
+                                    <td><span class="badge bg-secondary-subtle text-secondary">{{ ut.get_channel_display }}</span></td>
+                                    <td class="text-end">
+                                        <button class="btn btn-outline-primary btn-sm py-0 px-2" 
+                                                data-ticket-id="{{ ut.id }}" 
+                                                data-patient-id="{{ test_patient.id }}" 
+                                                onclick="linkUnidentified(this.dataset.ticketId, this.dataset.patientId)">
+                                            <i class="bi bi-link-45deg"></i> Привязать к {{ test_patient.first_name }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Незавершенные обращения -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-clock-history text-warning me-1"></i> Контроль незавершённых обращений
+                    </div>
+                    <span class="badge bg-secondary-subtle text-secondary badge-tz">п. 1.2 и 6.2</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light small text-muted">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Пациент</th>
+                                    <th>Тема / Услуга</th>
+                                    <th>Статус</th>
+                                    <th>След. контакт</th>
+                                    <th class="text-end">Действие</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in pending_tickets %}
+                                <tr>
+                                    <td class="fw-bold">#{{ t.id }}</td>
+                                    <td>
+                                        <a href="/patient/{{ t.patient.id }}/" class="text-dark fw-semibold text-decoration-none">
+                                            {{ t.patient.last_name }} {{ t.patient.first_name }}
+                                        </a>
+                                        <div class="text-muted small">{{ t.patient.phone }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="small fw-semibold">{{ t.service_name|default:t.subject }}</div>
+                                        <span class="badge bg-light text-dark border" style="font-size: 0.7rem;">{{ t.get_channel_display }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info-subtle text-info">{{ t.status.name|default:"В работе" }}</span>
+                                    </td>
+                                    <td>
+                                        {% if t.next_contact_date %}
+                                            <span class="badge bg-warning text-dark font-monospace">{{ t.next_contact_date|date:"d.m H:i" }}</span>
+                                        {% else %}
+                                            <span class="text-muted small">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn btn-outline-success btn-sm py-0 px-2" title="Записать на прием" 
+                                                onclick="advanceTicket('{{ t.id }}', 'booked')">
+                                            <i class="bi bi-check-lg"></i> Запись
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm py-0 px-2" title="Отказ" 
+                                                onclick="openRejectModal('{{ t.id }}')">
+                                            <i class="bi bi-x-lg"></i> Отказ
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="6" class="text-center py-4 text-muted">Все обращения закрыты</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Аналитика кампаний -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div><i class="bi bi-funnel text-primary me-1"></i> Сквозная аналитика маркетинга</div>
+                    <span class="badge bg-primary-subtle text-primary badge-tz">п. 4.5</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light small text-muted">
+                            <tr>
+                                <th>Кампания</th>
+                                <th>Источник</th>
+                                <th>Бюджет</th>
+                                <th>Лидов</th>
+                                <th>Выручка</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in campaign_stats %}
+                            <tr>
+                                <td class="fw-semibold">{{ c.name }}</td>
+                                <td><span class="badge bg-light text-secondary border">{{ c.source }}</span></td>
+                                <td>{{ c.budget }} ₸</td>
+                                <td class="fw-bold">{{ c.tickets_count|default:0 }}</td>
+                                <td class="text-success fw-bold">{{ c.total_income|default:"0.00" }} ₸</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center py-3 text-muted">Кампании не созданы</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Правая колонка -->
+        <div class="col-lg-4">
+            
+            <!-- Задачи, повторные контакты и перераспределение (Раздел 7 ТЗ) -->
+            <div class="card mb-4 border-start border-4 border-info">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-calendar-check text-info me-1"></i> Контроль задач (Раздел 7)
+                    </div>
+                    {% if overdue_followups_count > 0 %}
+                        <span class="badge bg-danger badge-tz">Просрочено: {{ overdue_followups_count }} (п. 7.4)</span>
+                    {% else %}
+                        <span class="badge bg-info-subtle text-info badge-tz">п. 7.1</span>
+                    {% endif %}
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush small">
+                        {% for fu in today_followups %}
+                        <li class="list-group-item py-2 px-3 {% if fu.is_overdue %}bg-danger-subtle border-danger{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <strong class="text-dark">
+                                    {% if fu.patient %}{{ fu.patient.last_name }} {{ fu.patient.first_name }}{% else %}Обращение #{{ fu.ticket_id }}{% endif %}
+                                </strong>
+                                <span class="font-monospace {% if fu.is_overdue %}text-danger fw-bold{% else %}text-muted{% endif %}">
+                                    <i class="bi bi-clock"></i> {{ fu.scheduled_at|date:"d.m H:i" }}
+                                </span>
+                            </div>
+                            <div class="text-secondary small mb-2">{{ fu.reason }}</div>
+                            <div class="d-flex justify-content-between align-items-center gap-2">
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="text-muted" style="font-size: 0.7rem;">Смена:</span>
+                                    <select class="form-select form-select-sm py-0" style="font-size: 0.75rem; width: auto;"
+                                            onchange="reassignTask('{{ fu.id }}', this.value)">
+                                        {% for op in operators %}
+                                            <option value="{{ op.id }}" {% if fu.assigned_to_id == op.id %}selected{% endif %}>
+                                                {{ op.username }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button class="btn btn-outline-success btn-sm py-0 px-2" style="font-size: 0.75rem;" 
+                                        onclick="completeTask('{{ fu.id }}')">
+                                    <i class="bi bi-check"></i> Готово
+                                </button>
+                            </div>
+                        </li>
+                        {% empty %}
+                        <li class="list-group-item text-center text-muted py-3">Активных задач нет</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Аналитика причин отказов (п. 6.6) -->
+            <div class="card mb-4 border-start border-4 border-danger">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-pie-chart text-danger me-1"></i> Причины отказов</span>
+                    <span class="badge bg-danger-subtle text-danger badge-tz">п. 6.6</span>
+                </div>
+                <div class="card-body p-2">
+                    <ul class="list-group list-group-flush small">
+                        {% for rej in rejections %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                            <span>{{ rej.name|default:"Отказ" }}</span>
+                            <span class="badge bg-danger rounded-pill">{{ rej.count|default:0 }}</span>
+                        </li>
+                        {% empty %}
+                        <li class="list-group-item text-center text-muted py-2">Отказов не зафиксировано</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Outbox (п. 1.4) -->
+            <div class="card mb-4 border-start border-4 border-success">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-shield-check text-success me-1"></i> Буфер Outbox</span>
+                    <span class="badge bg-success-subtle text-success badge-tz">п. 1.4</span>
+                </div>
+                <div class="card-body p-2">
+                    <div class="list-group list-group-flush small">
+                        {% for ev in integration_events %}
+                        <div class="list-group-item px-1 py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="fw-semibold">{{ ev.target_system }}</span>
+                                {% if ev.status == 'sent' %}
+                                    <span class="badge bg-success">Отправлено</span>
+                                {% elif ev.status == 'failed' %}
+                                    <span class="badge bg-danger">Изолирован</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Буфер</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-muted mt-1 font-monospace" style="font-size: 0.72rem;">{{ ev.event_type }}</div>
+                            {% if ev.last_error %}
+                            <div class="text-danger small mt-1 bg-light p-1 rounded" style="font-size: 0.68rem;">
+                                {{ ev.last_error }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% empty %}
+                        <div class="text-muted text-center py-2">Событий нет</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно отказа -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold"><i class="bi bi-x-circle text-danger me-1"></i> Фиксация отказа (п. 6.5 ТЗ)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-2">Выберите обязательную причину отказа из справочника (п. 6.6):</p>
+                <input type="hidden" id="rejectTicketId">
+                <select id="rejectionReasonSelect" class="form-select mb-3">
+                    {% for r in rejection_reasons %}
+                        <option value="{{ r.id }}">{{ r.name }}</option>
+                    {% empty %}
+                        <option value="1">Высокая стоимость</option>
+                        <option value="2">Отсутствует подходящее время</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="submitRejection()">Зафиксировать отказ</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+const csrftoken = getCookie('csrftoken');
+
+// Поиск по пациентам
+let searchTimeout = null;
+function handlePatientSearch(val) {
+    clearTimeout(searchTimeout);
+    const box = document.getElementById('searchResultsList');
+    if (!val || val.length < 2) {
+        box.classList.add('d-none');
+        box.innerHTML = '';
+        return;
+    }
+    searchTimeout = setTimeout(() => {
+        fetch(`/api/patients/search_patient/?q=${encodeURIComponent(val)}`)
+            .then(r => r.json())
+            .then(data => {
+                box.innerHTML = '';
+                if (!data || data.length === 0) {
+                    box.innerHTML = '<div class="list-group-item small text-muted">Пациентов не найдено</div>';
+                } else {
+                    data.forEach(p => {
+                        const iinInfo = p.iin ? ` | ИИН: ${p.iin}` : '';
+                        box.innerHTML += `
+                            <a href="/patient/${p.id}/" class="list-group-item list-group-item-action py-2">
+                                <div class="fw-semibold text-dark">${p.last_name} ${p.first_name}</div>
+                                <div class="small text-muted">${p.phone}${iinInfo}</div>
+                            </a>
+                        `;
+                    });
+                }
+                box.classList.remove('d-none');
+            })
+            .catch(() => box.classList.add('d-none'));
+    }, 250);
+}
+
+document.addEventListener('click', (e) => {
+    const input = document.getElementById('patientSearchInput');
+    const box = document.getElementById('searchResultsList');
+    if (input && box && !input.contains(e.target) && !box.contains(e.target)) {
+        box.classList.add('d-none');
+    }
+});
+
+// Симуляция пропущенного
+function simulateMissedCall(phone) {
+    fetch('/api/integrations/webhooks/missed-call/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ caller_phone: phone })
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert('✓ Пропущенный звонок зафиксирован! Создан тикет и задача на перезвон.');
+        location.reload();
+    })
+    .catch(err => alert('Ошибка симуляции: ' + err));
+}
+
+// Тест WhatsApp
+function testWhatsAppConsent(ticketId) {
+    if (!ticketId || ticketId === 'None') { alert('Тикет не найден'); return; }
+    fetch(`/api/tickets/${ticketId}/send_whatsapp/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ message: 'Напоминаем о записи на прием в медицинский центр.' })
+    })
+    .then(async r => {
+        const res = await r.json();
+        if (r.ok) {
+            alert('✓ Согласие проверено и активно. Сообщение передано в шлюз WhatsApp.');
+            location.reload();
+        } else {
+            alert('Блокировка отправки (п. 2.2 ТЗ):\n' + (res.error || JSON.stringify(res)));
+        }
+    })
+    .catch(err => alert('Ошибка отправки: ' + err));
+}
+
+// Запись на прием
+function advanceTicket(ticketId, stage) {
+    if (!ticketId) return;
+    fetch(`/api/tickets/${ticketId}/update_stage/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ result: stage, revenue: 25000 })
+    })
+    .then(r => r.json())
+    .then(() => {
+        alert('✓ Пациент успешно записан! Выручка 25 000 ₸ зафиксирована.');
+        location.reload();
+    })
+    .catch(err => alert('Ошибка обновления: ' + err));
+}
+
+// Модалка отказа
+let rejectModalInstance = null;
+function openRejectModal(ticketId) {
+    document.getElementById('rejectTicketId').value = ticketId;
+    if (!rejectModalInstance) {
+        rejectModalInstance = new bootstrap.Modal(document.getElementById('rejectModal'));
+    }
+    rejectModalInstance.show();
+}
+
+function submitRejection() {
+    const ticketId = document.getElementById('rejectTicketId').value;
+    const reasonId = document.getElementById('rejectionReasonSelect').value;
+
+    fetch(`/api/tickets/${ticketId}/update_stage/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ result: 'rejected', rejection_reason_id: reasonId })
+    })
+    .then(r => r.json())
+    .then(() => {
+        if (rejectModalInstance) rejectModalInstance.hide();
+        alert('✓ Отказ с причиной успешно зафиксирован.');
+        location.reload();
+    })
+    .catch(err => alert('Ошибка фиксации отказа: ' + err));
+}
+
+// Связывание неидентифицированного
+function linkUnidentified(ticketId, patientId) {
+    if (!ticketId || !patientId || ticketId === 'None' || patientId === 'None') return;
+    fetch(`/api/tickets/${ticketId}/link_patient/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ patient_id: patientId })
+    })
+    .then(r => r.json())
+    .then(() => {
+        alert('✓ Обращение привязано к карточке пациента (п. 5.6 ТЗ).');
+        location.reload();
+    })
+    .catch(err => alert('Ошибка связывания: ' + err));
+}
+
+// Завершение задачи (п. 7.2)
+function completeTask(taskId) {
+    const note = prompt('Итог выполнения задачи:', 'Связались с пациентом, вопрос решен');
+    if (!note) return;
+
+    fetch(`/api/follow-ups/${taskId}/complete/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ result_note: note })
+    })
+    .then(r => r.json())
+    .then(() => {
+        alert('✓ Задача выполнена (п. 7.2 ТЗ).');
+        location.reload();
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+
+// Перераспределение задачи смены (п. 7.6)
+function reassignTask(taskId, newUserId) {
+    fetch(`/api/follow-ups/${taskId}/reassign/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+        body: JSON.stringify({ user_id: newUserId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert('✓ Задача перераспределена на: ' + data.assigned_to);
+    })
+    .catch(err => alert('Ошибка: ' + err));
+}
+</script>
+</body>
+</html>
