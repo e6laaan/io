@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карточка пациента — {{ patient.last_name }} {{ patient.first_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; color: #1e293b; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); margin-bottom: 24px; }
+        .card-header { background: #ffffff; border-bottom: 1px solid #f1f5f9; font-weight: 600; padding: 16px 20px; }
+        .tz-tag { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+        .kpi-box { background-color: #ffffff; border-radius: 10px; padding: 15px; border-left: 4px solid #3b82f6; }
+    </style>
+</head>
+<body class="py-4">
+<div class="container-fluid px-4">
+
+    <!-- Верхняя панель -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="/" class="btn btn-outline-secondary btn-sm mb-2">
+                <i class="bi bi-arrow-left"></i> Вернуться в дашборд
+            </a>
+            <h3 class="fw-bold text-dark mb-0">
+                <i class="bi bi-person-badge text-primary"></i> Единая карточка пациента
+                <span class="badge bg-primary-subtle text-primary tz-tag ms-2">Раздел 5 ТЗ</span>
+            </h3>
+        </div>
+        <div class="text-end">
+            <span class="text-muted small">Внешний ID (МИС/1С):</span>
+            <span class="badge bg-light text-dark border">{{ patient.external_id|default:"Не синхронизирован" }}</span>
+        </div>
+    </div>
+
+    <!-- Метрики пациента (п. 5.2 ТЗ) -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="kpi-box border-primary">
+                <span class="text-muted small">Всего обращений</span>
+                <h3 class="fw-bold mb-0 text-dark">{{ patient.total_tickets_count }}</h3>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-box border-success">
+                <span class="text-muted small">Записей на прием</span>
+                <h3 class="fw-bold mb-0 text-success">{{ patient.total_booked_count }}</h3>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-box border-danger">
+                <span class="text-muted small">Отказов / Незаписей</span>
+                <h3 class="fw-bold mb-0 text-danger">{{ patient.total_rejections_count }}</h3>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-box border-info">
+                <span class="text-muted small">Общий доход (LTV)</span>
+                <h3 class="fw-bold mb-0 text-info">{{ patient.total_revenue }} ₸</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Данные профиля и аудит согласия -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-person-lines-fill text-primary me-1"></i> Данные пациента</span>
+                    <span class="badge bg-secondary-subtle text-secondary tz-tag">п. 5.2</span>
+                </div>
+                <div class="card-body">
+                    <h5 class="fw-bold text-dark">{{ patient.last_name }} {{ patient.first_name }} {{ patient.patronymic }}</h5>
+                    <hr>
+                    <div class="mb-2">
+                        <span class="text-muted small d-block">ИИН (Казахстан):</span>
+                        <strong class="font-monospace text-primary">{{ patient.iin|default:"Не указан" }}</strong>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-muted small d-block">Основной телефон:</span>
+                        <strong>{{ patient.phone }}</strong>
+                    </div>
+                    {% if patient.extra_phone %}
+                    <div class="mb-2">
+                        <span class="text-muted small d-block">Дополнительный номер:</span>
+                        <span>{{ patient.extra_phone }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="mb-2">
+                        <span class="text-muted small d-block">Email:</span>
+                        <span>{{ patient.email|default:"—" }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-muted small d-block">Дата рождения:</span>
+                        <span>{{ patient.birth_date|date:"d.m.Y"|default:"—" }}</span>
+                    </div>
+                    <div class="mb-0">
+                        <span class="text-muted small d-block">Сервисные заметки:</span>
+                        <p class="small text-secondary mb-0">{{ patient.notes|default:"Заметок нет" }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Аудит согласия на WhatsApp (п. 2.2, 5.2 ТЗ) -->
+            <div class="card border-start border-4 border-info">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-shield-check text-info me-1"></i> Согласие на коммуникации</span>
+                    <span class="badge bg-info-subtle text-info tz-tag">п. 5.2</span>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <span class="text-muted small d-block">Статус согласия (WhatsApp):</span>
+                        {% if patient.whatsapp_consent %}
+                            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Предоставлено</span>
+                        {% else %}
+                            <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Запрещено клиентом</span>
+                        {% endif %}
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-muted small d-block">Дата фиксации/изменения:</span>
+                        <span class="small font-monospace">{{ patient.consent_updated_at|date:"d.m.Y H:i"|default:patient.created_at|date:"d.m.Y H:i" }}</span>
+                    </div>
+                    <div class="mb-0">
+                        <span class="text-muted small d-block">Источник согласия:</span>
+                        <span class="badge bg-light text-dark border">{{ patient.get_consent_source_display|default:patient.consent_source }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- История обращений и задач -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-journal-text text-primary me-1"></i> Единая история обращений</span>
+                    <span class="badge bg-secondary-subtle text-secondary tz-tag">п. 5.2</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light small text-muted">
+                                <tr>
+                                    <th>№</th>
+                                    <th>Дата</th>
+                                    <th>Канал / Кампания</th>
+                                    <th>Услуга / Направление</th>
+                                    <th>Результат</th>
+                                    <th>Оплата</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in tickets %}
+                                <tr>
+                                    <td class="fw-bold">#{{ t.id }}</td>
+                                    <td class="small">{{ t.created_at|date:"d.m.Y H:i" }}</td>
+                                    <td>
+                                        <div><span class="badge bg-light text-dark border">{{ t.get_channel_display }}</span></div>
+                                        {% if t.campaign %}
+                                            <span class="small text-muted">{{ t.campaign.name }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="fw-semibold">{{ t.service_name|default:t.subject }}</td>
+                                    <td>
+                                        {% if t.is_booked %}
+                                            <span class="badge bg-success">Записан</span>
+                                        {% elif t.rejection_reason %}
+                                            <span class="badge bg-danger">Отказ: {{ t.rejection_reason.name }}</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">{{ t.status.name|default:"В работе" }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="fw-bold text-success">{{ t.revenue }} ₸</td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="6" class="text-center py-4 text-muted">Обращений по пациенту нет</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Задачи и повторные контакты (п. 5.2, 7.1) -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-clock text-warning me-1"></i> Задачи и повторные контакты</span>
+                    <span class="badge bg-secondary-subtle text-secondary tz-tag">п. 7.1</span>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for fu in follow_ups %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+                            <div>
+                                <h6 class="mb-1 fw-bold">{{ fu.reason }}</h6>
+                                <div class="text-muted small">Время: {{ fu.scheduled_at|date:"d.m.Y H:i" }} | Ответственный: {{ fu.assigned_to.username }}</div>
+                                {% if fu.result_note %}
+                                    <div class="text-secondary small mt-1">Результат: {{ fu.result_note }}</div>
+                                {% endif %}
+                            </div>
+                            <span class="badge bg-primary">{{ fu.get_status_display|default:fu.status }}</span>
+                        </li>
+                        {% empty %}
+                        <li class="list-group-item text-center py-3 text-muted">Нет задач по пациенту</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>
